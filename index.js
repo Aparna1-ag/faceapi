@@ -53,7 +53,6 @@ app.post("/sendfacedata", async (req, res) => {
       "INSERT INTO facedata (username,  descriptorArr) VALUES (?, ?)",
       [empName, descriptorArray]
     );
-    console.log(rows);
     res.json({
       success: true,
       insertId: rows.insertId,
@@ -71,20 +70,23 @@ app.get("/hello", (req, res) => {
 
 
 app.post("/compare", async (req, res) => {
+
   let { userFace } = req.body;
   const [rows] = await pool.query("SELECT * FROM facedata");
-  userFace = JSON.parse(userFace);
+  const userFaceForComparison = JSON.parse(userFace);
 
-  const faceMatcher = (desArr, username) => {
-    desArr = JSON.parse(desArr);
+  let allComparisons = []
+
+  const faceMatcher = (dbArr, username) => {
+    const dbArrForComparison = JSON.parse(dbArr);
 
     let differenceOfSquares = [];
 
-    for (let a = 0; a < userFace.length; a++) {
-      let differenesForEachPoint = Number(desArr[a]) - Number(userFace[a]);
+    for (let a = 0; a < userFaceForComparison.length; a++) {
+      let differenesForEachPoint = Number(dbArrForComparison[a]) - Number(userFaceForComparison[a]);
       differenceOfSquares.push(Math.pow(differenesForEachPoint, 2));
-      // console.log(a, userFace[a])
-      // console.log(a, desArr[a])
+      // console.log(a, userFaceForComparison[a])
+      // console.log(a, dbArrForComparison[a])
     }
 
     // console.log(differenceOfSquares)
@@ -99,16 +101,77 @@ app.post("/compare", async (req, res) => {
 
     const euclideanDistance = Math.sqrt(sumOfDifferences);
 
-    console.log(euclideanDistance, username);
+    // console.log(euclideanDistance, username);
+    allComparisons.push({
+        distanceIndicator: euclideanDistance,
+        personName: username
+
+    })
+
   };
 
   for (let each of rows) {
     faceMatcher(each.descriptorArr, each.username);
   }
 
-  res.json({
-    success: true,
-  });
+
+  // console.log(allComparisons)
+
+  let bestMatch = allComparisons[0].distanceIndicator
+  let bestMatchUserName = allComparisons[0].personName
+  let noMatch = true
+
+ const findIfNoMatches = () => {
+  for (let y = 0 ; y < allComparisons.length; y++) {
+    if  (allComparisons[y].distanceIndicator  < 0.5) {
+      noMatch = false
+      return
+    }
+
+  }
+ }
+
+ findIfNoMatches()
+
+  
+
+
+if (!noMatch) {
+  for (let y = 0 ; y < allComparisons.length; y++) {
+    console.log(allComparisons[y].distanceIndicator)
+    if (allComparisons[y].distanceIndicator < bestMatch) {
+        bestMatch = allComparisons[y].distanceIndicator
+        bestMatchUserName = allComparisons[y].personName
+        console.log(allComparisons[y].personName, bestMatchUserName)
+    }
+}
+
+if (bestMatch > 0.5) {
+  bestMatchUserName =  "No matches found"
+  bestMatch = "NA"
+}
+
+res.json({
+  success: true,
+  bestMatchFace: bestMatchUserName,
+  indicator: bestMatch
+});
+
+  
+    
+  } else {
+    res.json({
+      success: true,
+      bestMatchFace: "No matching faces found",
+      indicator: null
+    });
+
+  }
+
+
+
+
+
 });
 
 app.listen(PORT, () => {
