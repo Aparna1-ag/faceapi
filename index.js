@@ -36,6 +36,57 @@ pool.getConnection((err, conn) => {
   }
 });
 
+let allComparisons = []
+
+
+const faceMatcher = (desOne, desTwo, userName, userId) => {
+  const desOneParsed = JSON.parse(desOne);
+
+  let differenceOfSquares = [];
+
+  for (let a = 0; a < desTwo.length; a++) {
+    let differenesForEachPoint = Number(desOneParsed[a]) - Number(desTwo[a]);
+    differenceOfSquares.push(Math.pow(differenesForEachPoint, 2));
+    // console.log(a, desTwo[a])
+    // console.log(a, desOneParsed[a])
+  }
+
+  // console.log(differenceOfSquares)
+
+  let sumOfDifferences = 0;
+
+  for (let each of differenceOfSquares) {
+    sumOfDifferences += each;
+  }
+
+  // console.log(sumOfDifferences)
+
+  const euclideanDistance = Math.sqrt(sumOfDifferences);
+
+  // console.log(euclideanDistance, username);
+  allComparisons.push({
+      distanceIndicator: euclideanDistance,
+      personName: userName,
+      personId: userId
+
+  })
+
+};
+
+
+const findIfNoMatches = (allFacesArrays) => {
+  for (let y = 0 ; y < allFacesArrays.length; y++) {
+    if  (allFacesArrays[y].distanceIndicator  < 0.6) {
+      return false
+    }
+
+  }
+
+  return true
+ }
+
+
+
 
 app.post("/sendfacedata", async (req, res) => {
   //    if (!req.body || !req.body.empName || !req.body.descriptorArray) {
@@ -43,24 +94,59 @@ app.post("/sendfacedata", async (req, res) => {
   //         error: "must contain username and descriptor array"
   //     })
 
+  allComparisons = []
+
   const { empName, descriptorArray } = req.body;
 
-  // const {descriptorArray} = req.body
-  console.log(empName, descriptorArray);
 
-  try {
-    const [rows] = await pool.query(
-      "INSERT INTO facedata (username,  descriptorArr) VALUES (?, ?)",
-      [empName, descriptorArray]
-    );
-    res.json({
-      success: true,
-      insertId: rows.insertId,
-    });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "error processing request" });
+  const currentUserFaceParsed = JSON.parse(descriptorArray);
+  const [rows] = await pool.query("SELECT * FROM facedata");
+
+  // console.log(empName, descriptorArray);
+
+
+
+
+
+
+  for (let each of rows) {
+    faceMatcher(each.descriptorArr, currentUserFaceParsed, each.username, each.id);
   }
+
+  const matchResult = findIfNoMatches(allComparisons)
+
+  if (!matchResult) {
+    res.status(200).json({
+      message: "User already registred!"
+    })
+  } else {
+
+    try {
+      const [rows] = await pool.query(
+        "INSERT INTO facedata (username,  descriptorArr) VALUES (?, ?)",
+        [empName, descriptorArray]
+      );
+      res.json({
+        success: true,
+        insertId: rows.insertId,
+      });
+    } catch (err) {
+      console.log(err);
+      res.status(500).json({ error: "error processing request" });
+    }
+
+  }
+
+
+
+
+
+
+
+
+  // const {descriptorArray} = req.body
+
+
 });
 
 app.get("/hello", (req, res) => {
@@ -70,46 +156,15 @@ app.get("/hello", (req, res) => {
 
 
 app.post("/compare", async (req, res) => {
+  allComparisons = []
 
   let { userFace } = req.body;
-  const [rows] = await pool.query("SELECT * FROM facedata");
   const currentUserFaceParsed = JSON.parse(userFace);
+  const [rows] = await pool.query("SELECT * FROM facedata");
 
-  let allComparisons = []
 
-  const faceMatcher = (desOne, desTwo, userName, userId) => {
-    const desOneParsed = JSON.parse(desOne);
 
-    let differenceOfSquares = [];
 
-    for (let a = 0; a < desTwo.length; a++) {
-      let differenesForEachPoint = Number(desOneParsed[a]) - Number(desTwo[a]);
-      differenceOfSquares.push(Math.pow(differenesForEachPoint, 2));
-      // console.log(a, desTwo[a])
-      // console.log(a, desOneParsed[a])
-    }
-
-    // console.log(differenceOfSquares)
-
-    let sumOfDifferences = 0;
-
-    for (let each of differenceOfSquares) {
-      sumOfDifferences += each;
-    }
-
-    // console.log(sumOfDifferences)
-
-    const euclideanDistance = Math.sqrt(sumOfDifferences);
-
-    // console.log(euclideanDistance, username);
-    allComparisons.push({
-        distanceIndicator: euclideanDistance,
-        personName: userName,
-        personId: userId
-
-    })
-
-  };
 
   for (let each of rows) {
     faceMatcher(each.descriptorArr, currentUserFaceParsed, each.username, each.id);
@@ -121,24 +176,21 @@ app.post("/compare", async (req, res) => {
   let bestMatch = allComparisons[0].distanceIndicator
   let bestMatchUserName = allComparisons[0].personName
   let bestMatchUserId = allComparisons[0].personId
-  let noMatch = true
-
- const findIfNoMatches = () => {
-  for (let y = 0 ; y < allComparisons.length; y++) {
-    if  (allComparisons[y].distanceIndicator  < 0.5) {
-      noMatch = false
-      return
-    }
-
-  }
- }
-
- findIfNoMatches()
-
-  
 
 
-if (!noMatch) {
+
+ const matchResult = findIfNoMatches(allComparisons)
+
+
+ if (matchResult) {
+  res.json({
+    success: true,
+    bestMatchFace: "No matching faces found",
+    indicator: null
+  });
+
+
+ } else {
   for (let y = 0 ; y < allComparisons.length; y++) {
     console.log(allComparisons[y].distanceIndicator)
     if (allComparisons[y].distanceIndicator < bestMatch) {
@@ -149,11 +201,6 @@ if (!noMatch) {
     }
 }
 
-if (bestMatch > 0.5) {
-  bestMatchUserName =  "No matches found"
-  bestMatch = "NA"
-}
-
 res.json({
   success: true,
   bestMatchFace: bestMatchUserName,
@@ -161,16 +208,11 @@ res.json({
   indicator: bestMatch
 });
 
-  
-    
-  } else {
-    res.json({
-      success: true,
-      bestMatchFace: "No matching faces found",
-      indicator: null
-    });
 
-  }
+ }
+
+  
+
 
 
 
