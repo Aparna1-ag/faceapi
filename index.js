@@ -73,20 +73,20 @@ app.post("/compare", async (req, res) => {
 
   let { userFace } = req.body;
   const [rows] = await pool.query("SELECT * FROM facedata");
-  const userFaceForComparison = JSON.parse(userFace);
+  const currentUserFaceParsed = JSON.parse(userFace);
 
   let allComparisons = []
 
-  const faceMatcher = (dbArr, username) => {
-    const dbArrForComparison = JSON.parse(dbArr);
+  const faceMatcher = (desOne, desTwo, userName, userId) => {
+    const desOneParsed = JSON.parse(desOne);
 
     let differenceOfSquares = [];
 
-    for (let a = 0; a < userFaceForComparison.length; a++) {
-      let differenesForEachPoint = Number(dbArrForComparison[a]) - Number(userFaceForComparison[a]);
+    for (let a = 0; a < desTwo.length; a++) {
+      let differenesForEachPoint = Number(desOneParsed[a]) - Number(desTwo[a]);
       differenceOfSquares.push(Math.pow(differenesForEachPoint, 2));
-      // console.log(a, userFaceForComparison[a])
-      // console.log(a, dbArrForComparison[a])
+      // console.log(a, desTwo[a])
+      // console.log(a, desOneParsed[a])
     }
 
     // console.log(differenceOfSquares)
@@ -104,21 +104,23 @@ app.post("/compare", async (req, res) => {
     // console.log(euclideanDistance, username);
     allComparisons.push({
         distanceIndicator: euclideanDistance,
-        personName: username
+        personName: userName,
+        personId: userId
 
     })
 
   };
 
   for (let each of rows) {
-    faceMatcher(each.descriptorArr, each.username);
+    faceMatcher(each.descriptorArr, currentUserFaceParsed, each.username, each.id);
   }
 
 
-  // console.log(allComparisons)
+  console.log(allComparisons)
 
   let bestMatch = allComparisons[0].distanceIndicator
   let bestMatchUserName = allComparisons[0].personName
+  let bestMatchUserId = allComparisons[0].personId
   let noMatch = true
 
  const findIfNoMatches = () => {
@@ -142,6 +144,7 @@ if (!noMatch) {
     if (allComparisons[y].distanceIndicator < bestMatch) {
         bestMatch = allComparisons[y].distanceIndicator
         bestMatchUserName = allComparisons[y].personName
+        bestMatchUserId = allComparisons[y].personId
         console.log(allComparisons[y].personName, bestMatchUserName)
     }
 }
@@ -154,6 +157,7 @@ if (bestMatch > 0.5) {
 res.json({
   success: true,
   bestMatchFace: bestMatchUserName,
+  id: bestMatchUserId,
   indicator: bestMatch
 });
 
